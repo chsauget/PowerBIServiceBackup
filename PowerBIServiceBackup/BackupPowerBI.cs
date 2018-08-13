@@ -53,23 +53,27 @@ namespace PowerBIServiceBackup
             
             //Get power bi groups id
             string[] powerBIGroups = await context.CallActivityAsync<string[]>("GetGroups",null);
-            
-            //Foreach group, get powerbi reports id
-            List<GroupReport> powerBIReports = new List<GroupReport>();
+
+            //Get all reports of all groups
+            List<Task<List<GroupReport>>> groupsTasks = new List<Task<List<GroupReport>>>();
             foreach (string group in powerBIGroups)
             {
-                powerBIReports.AddRange(await context.CallActivityAsync<List<GroupReport>>("GetReports", group));
+                Task<List<GroupReport>> task = context.CallActivityAsync<List<GroupReport>>("GetReports", group);
+                groupsTasks.Add(task);
             }
+            await Task.WhenAll(groupsTasks);
 
-            List<Task<string>> parallelTasks = new List<Task<string>>();
-           
+            List<GroupReport> powerBIReports = groupsTasks.SelectMany(t => t.Result).ToList();
+
+            // Treat all reports in //
+            List<Task<string>> reportsTasks = new List<Task<string>>();
             foreach (GroupReport groupReport in powerBIReports)
             {
                     Task<string> task = context.CallActivityAsync<string>("UploadBlob", groupReport);
-                    parallelTasks.Add(task);
+                    reportsTasks.Add(task);
             }
 
-            await Task.WhenAll(parallelTasks);
+            await Task.WhenAll(reportsTasks);
             log.LogInformation($"************* Backup end ***************");
         }
 
@@ -87,8 +91,6 @@ namespace PowerBIServiceBackup
         [FunctionName("GetReports")]
         public static List<GroupReport> GetReports([ActivityTrigger]string group, ILogger log)
         {
-
-            Dictionary<string, string> Reports = new Dictionary<string, string>();
             using (PowerBIClient powerBIClient = new PowerBIClient(PowerBIApiUrl, TokenCredentials))
             {
                 try
