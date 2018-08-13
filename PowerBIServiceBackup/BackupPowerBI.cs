@@ -17,18 +17,34 @@ namespace PowerBIServiceBackup
 {
     public static class BackupPowerBI
     {
+        private static TokenCredentials _tokenCredentials;
+
+        public static TokenCredentials TokenCredentials
+        {
+            get
+            {
+                if(_tokenCredentials == null)
+                {
+                    //Retrieve the access credential
+                    TokenCredentials tokenCredentials = GetToken(ConfigurationManager.AppSettings["PowerBILogin"]
+                           , ConfigurationManager.AppSettings["PowerBIPassword"]
+                           , ConfigurationManager.AppSettings["AuthenticationContextUrl"]
+                           , ConfigurationManager.AppSettings["PowerBIRessourceUrl"]
+                           , ConfigurationManager.AppSettings["ClientId"]);
+
+                    _tokenCredentials = tokenCredentials;
+                }
+
+                return _tokenCredentials;
+            }
+        }
+
+
         [FunctionName("RetrievePowerBIReports")]
         public static async Task<List<string>> Run(
             [OrchestrationTrigger] DurableOrchestrationContext context, ILogger log)
         {
             log.LogInformation($"Starting RetrievePowerBIReports");
-
-            //Retrieve the access credential
-            TokenCredentials tokenCredentials = GetToken(ConfigurationManager.AppSettings["PowerBILogin"]
-                   , ConfigurationManager.AppSettings["PowerBIPassword"]
-                   , ConfigurationManager.AppSettings["AuthenticationContextUrl"]
-                   , ConfigurationManager.AppSettings["PowerBIRessourceUrl"]
-                   , ConfigurationManager.AppSettings["ClientId"]);
 
             var outputs = new List<string>();
 
@@ -61,14 +77,9 @@ namespace PowerBIServiceBackup
         {
             log.LogInformation($"Retrieving PowerBI Groups");
 
-            //Retrieve the access credential
-            TokenCredentials tokenCredentials = GetToken(ConfigurationManager.AppSettings["PowerBILogin"]
-                   , ConfigurationManager.AppSettings["PowerBIPassword"]
-                   , ConfigurationManager.AppSettings["AuthenticationContextUrl"]
-                   , ConfigurationManager.AppSettings["PowerBIRessourceUrl"]
-                   , ConfigurationManager.AppSettings["ClientId"]);
 
-            using (PowerBIClient powerBIClient = new PowerBIClient(new Uri(ConfigurationManager.AppSettings["PowerBIApi"]), tokenCredentials))
+
+            using (PowerBIClient powerBIClient = new PowerBIClient(new Uri(ConfigurationManager.AppSettings["PowerBIApi"]), TokenCredentials))
             {
                 return powerBIClient.Groups.GetGroups().Value.Select(x => x.Id).ToArray();
             }
@@ -78,15 +89,9 @@ namespace PowerBIServiceBackup
         [FunctionName("GetReports")]
         public static List<GroupReport> GetReports([ActivityTrigger]string group, ILogger log)
         {
-            //Retrieve the access credential
-            TokenCredentials tokenCredentials = GetToken(ConfigurationManager.AppSettings["PowerBILogin"]
-                   , ConfigurationManager.AppSettings["PowerBIPassword"]
-                   , ConfigurationManager.AppSettings["AuthenticationContextUrl"]
-                   , ConfigurationManager.AppSettings["PowerBIRessourceUrl"]
-                   , ConfigurationManager.AppSettings["ClientId"]);
 
             Dictionary<string, string> Reports = new Dictionary<string, string>();
-            using (PowerBIClient powerBIClient = new PowerBIClient(new Uri(ConfigurationManager.AppSettings["PowerBIApi"]), tokenCredentials))
+            using (PowerBIClient powerBIClient = new PowerBIClient(new Uri(ConfigurationManager.AppSettings["PowerBIApi"]), TokenCredentials))
             {
                 try
                 {
@@ -104,19 +109,12 @@ namespace PowerBIServiceBackup
         [FunctionName("UploadBlob")]
         public static string UploadBlob([ActivityTrigger] GroupReport groupReport, ILogger log)
         {
-            //Retrieve the access credential
-            TokenCredentials tokenCredentials = GetToken(ConfigurationManager.AppSettings["PowerBILogin"]
-                   , ConfigurationManager.AppSettings["PowerBIPassword"]
-                   , ConfigurationManager.AppSettings["AuthenticationContextUrl"]
-                   , ConfigurationManager.AppSettings["PowerBIRessourceUrl"]
-                   , ConfigurationManager.AppSettings["ClientId"]);
-
             Stream reportStream;
             string reportName;
             try
             {
                 // Create a Power BI Client object. It will be used to call Power BI APIs.
-                using (PowerBIClient powerBIClient = new PowerBIClient(new Uri(ConfigurationManager.AppSettings["PowerBIApi"]), tokenCredentials))
+                using (PowerBIClient powerBIClient = new PowerBIClient(new Uri(ConfigurationManager.AppSettings["PowerBIApi"]), TokenCredentials))
                 {
                     log.LogInformation($"powerBI client created");
                     Report report = powerBIClient.Reports.GetReport(groupReport.GroupId, groupReport.ReportId);
@@ -143,7 +141,6 @@ namespace PowerBIServiceBackup
 
         public static CloudBlockBlob GetBlob(string connectionString, string containerName,string blobName)
         {
-
             // Retrieve storage account from connection string.
             CloudStorageAccount storageAccount = CloudStorageAccount.Parse(connectionString);
 
