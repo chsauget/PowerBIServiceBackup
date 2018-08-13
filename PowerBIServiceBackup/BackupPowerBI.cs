@@ -106,8 +106,10 @@ namespace PowerBIServiceBackup
         }
 
         [FunctionName("UploadBlob")]
-        public static string UploadBlob([ActivityTrigger] GroupReport groupReport, ILogger log)
+        public static async Task<string> UploadBlob([ActivityTrigger] GroupReport groupReport, ILogger log)
         {
+            log.LogInformation("Trying to upload report {reportid} of group {groupid}", groupReport.ReportId, groupReport.GroupId);
+
             Stream reportStream;
             string reportName;
             try
@@ -116,9 +118,9 @@ namespace PowerBIServiceBackup
                 using (PowerBIClient powerBIClient = new PowerBIClient(PowerBIApiUrl, TokenCredentials))
                 {
                     log.LogInformation($"powerBI client created");
-                    Report report = powerBIClient.Reports.GetReport(groupReport.GroupId, groupReport.ReportId);
+                    Report report = await powerBIClient.Reports.GetReportAsync(groupReport.GroupId, groupReport.ReportId);
                     reportName = DateTime.Now.ToString("yyyyMMdd_HH") + "h/" + report.Name + ".pbix";
-                    reportStream = powerBIClient.Reports.ExportReport(groupReport.GroupId, groupReport.ReportId);
+                    reportStream = await powerBIClient.Reports.ExportReportAsync(groupReport.GroupId, groupReport.ReportId);
                 }
 
                 // Retrieve destination blob reference
@@ -126,15 +128,16 @@ namespace PowerBIServiceBackup
                     BlobStorageCS
                     ,BlobStorageContainerName
                     ,reportName);
-                log.LogInformation($"Blob reference retrieved");
+                log.LogInformation("Blob reference retrieved for report {reportname}", reportName);
 
-                pbixBlob.UploadFromStream(reportStream);
+                await pbixBlob.UploadFromStreamAsync(reportStream);
             }
             catch (Exception e)
             {
-                log.LogInformation($"Error : " + e.Message);
+                log.LogError(new EventId(666), e, "Error while trying to upload blob: {message}", e.Message);
                 return e.Message;
             }
+
             return $"{reportName} successfully created!";
         }
     }
