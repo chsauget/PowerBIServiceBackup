@@ -12,6 +12,9 @@ namespace PowerBIServiceBackup.Helpers
     {
         public static CloudBlockBlob GetBlob(string connectionString, string containerName, string blobName)
         {
+            // Container name should be lowercase
+            containerName = containerName.ToLower();
+
             // Retrieve storage account from connection string.
             CloudStorageAccount storageAccount = CloudStorageAccount.Parse(connectionString);
 
