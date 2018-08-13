@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using Microsoft.Azure.WebJobs;
 using Microsoft.Azure.WebJobs.Extensions.Http;
 using Microsoft.Extensions.Logging;
+using PowerBIServiceBackup.Helpers;
 
 namespace PowerBIServiceBackup
 {
@@ -18,6 +19,10 @@ namespace PowerBIServiceBackup
             ILogger log)
         {
             // Function input comes from the request content.
+            if(!string.IsNullOrEmpty(UtilityHelper.CheckConfig()))
+            {
+                throw new Exception($"Error => {UtilityHelper.CheckConfig()}");
+            }
             dynamic eventData = await req.Content.ReadAsAsync<object>();
             string instanceId = await starter.StartNewAsync(functionName, eventData);
 
@@ -33,6 +38,10 @@ namespace PowerBIServiceBackup
         [OrchestrationClient] DurableOrchestrationClient starter,
         ILogger log)
         {
+            if (!string.IsNullOrEmpty(UtilityHelper.CheckConfig()))
+            {
+                throw new Exception($"Error => {UtilityHelper.CheckConfig()}");
+            }
             string instanceId = await starter.StartNewAsync("RetrievePowerBIReports", null);
             log.LogInformation($"Started orchestration with ID = '{instanceId}'.");
         }
