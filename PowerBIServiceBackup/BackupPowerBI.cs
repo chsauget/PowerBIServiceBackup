@@ -99,10 +99,8 @@ namespace PowerBIServiceBackup
                 {
                     log.LogInformation($"Error : " + e.Message);
                     return new List<GroupReport>();
-                }
-                
+                }   
             }
-
         }
 
         [FunctionName("UploadBlob")]
@@ -122,8 +120,7 @@ namespace PowerBIServiceBackup
                 }
 
                 // Retrieve destination blob reference
-
-                CloudBlockBlob pbixBlob = GetBlob(
+                CloudBlockBlob pbixBlob = BlobStorageHelper.GetBlob(
                     BlobStorageCS
                     ,BlobStorageContainerName
                     ,reportName);
@@ -138,28 +135,5 @@ namespace PowerBIServiceBackup
             }
             return $"{reportName} successfully created!";
         }
-
-        public static CloudBlockBlob GetBlob(string connectionString, string containerName,string blobName)
-        {
-            // Retrieve storage account from connection string.
-            CloudStorageAccount storageAccount = CloudStorageAccount.Parse(connectionString);
-
-            // Create the blob client.
-            CloudBlobClient blobClient = storageAccount.CreateCloudBlobClient();
-
-            // Retrieve reference to a previously created container.
-            CloudBlobContainer container = blobClient.GetContainerReference(containerName);
-
-            container.CreateIfNotExists();
-
-            // Retrieve reference to a blob named "myblob".
-            CloudBlockBlob blockBlob = container.GetBlockBlobReference(blobName);
-
-            return blockBlob;
-
-        }
-
-        
-
     }
 }
