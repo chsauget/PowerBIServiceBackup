@@ -12,13 +12,14 @@ using Microsoft.PowerBI.Api.V2.Models;
 using Microsoft.Rest;
 using Microsoft.WindowsAzure.Storage;
 using Microsoft.WindowsAzure.Storage.Blob;
+using PowerBIServiceBackup.Helpers;
+using PowerBIServiceBackup.Models;
 
 namespace PowerBIServiceBackup
 {
     public static class BackupPowerBI
     {
         private static TokenCredentials _tokenCredentials;
-
         public static TokenCredentials TokenCredentials
         {
             get
@@ -26,11 +27,12 @@ namespace PowerBIServiceBackup
                 if(_tokenCredentials == null)
                 {
                     //Retrieve the access credential
-                    TokenCredentials tokenCredentials = GetToken(ConfigurationManager.AppSettings["PowerBILogin"]
-                           , ConfigurationManager.AppSettings["PowerBIPassword"]
-                           , ConfigurationManager.AppSettings["AuthenticationContextUrl"]
-                           , ConfigurationManager.AppSettings["PowerBIRessourceUrl"]
-                           , ConfigurationManager.AppSettings["ClientId"]);
+                    TokenCredentials tokenCredentials = ADALHelper.GetToken(
+                            ConfigurationManager.AppSettings["PowerBILogin"]
+                           ,ConfigurationManager.AppSettings["PowerBIPassword"]
+                           ,ConfigurationManager.AppSettings["AuthenticationContextUrl"]
+                           ,ConfigurationManager.AppSettings["PowerBIRessourceUrl"]
+                           ,ConfigurationManager.AppSettings["ClientId"]);
 
                     _tokenCredentials = tokenCredentials;
                 }
@@ -39,19 +41,19 @@ namespace PowerBIServiceBackup
             }
         }
 
+        public static Uri PowerBIApiUrl = new Uri(ConfigurationManager.AppSettings["PowerBIApi"]);
+        public static string BlobStorageCS = ConfigurationManager.AppSettings["BlobConnectionString"];
+        public static string BlobStorageContainerName = ConfigurationManager.AppSettings["BlobContainerName"];
 
         [FunctionName("RetrievePowerBIReports")]
-        public static async Task<List<string>> Run(
+        public static async Task Run(
             [OrchestrationTrigger] DurableOrchestrationContext context, ILogger log)
         {
             log.LogInformation($"Starting RetrievePowerBIReports");
-
-            var outputs = new List<string>();
-
+            
             //Get power bi groups id
             string[] powerBIGroups = await context.CallActivityAsync<string[]>("GetGroups",null);
-
-
+            
             //Foreach group, get powerbi reports id
             List<GroupReport> powerBIReports = new List<GroupReport>();
             foreach (string group in powerBIGroups)
@@ -69,29 +71,25 @@ namespace PowerBIServiceBackup
 
             await Task.WhenAll(parallelTasks);
             log.LogInformation($"************* Backup end ***************");
-
-            return outputs;
         }
+
         [FunctionName("GetGroups")]
         public static string[] GetGroups([ActivityTrigger]DurableActivityContext GroupContext, ILogger log)
         {
             log.LogInformation($"Retrieving PowerBI Groups");
-
-
-
-            using (PowerBIClient powerBIClient = new PowerBIClient(new Uri(ConfigurationManager.AppSettings["PowerBIApi"]), TokenCredentials))
+            
+            using (PowerBIClient powerBIClient = new PowerBIClient(PowerBIApiUrl, TokenCredentials))
             {
                 return powerBIClient.Groups.GetGroups().Value.Select(x => x.Id).ToArray();
             }
-
-
         }
+
         [FunctionName("GetReports")]
         public static List<GroupReport> GetReports([ActivityTrigger]string group, ILogger log)
         {
 
             Dictionary<string, string> Reports = new Dictionary<string, string>();
-            using (PowerBIClient powerBIClient = new PowerBIClient(new Uri(ConfigurationManager.AppSettings["PowerBIApi"]), TokenCredentials))
+            using (PowerBIClient powerBIClient = new PowerBIClient(PowerBIApiUrl, TokenCredentials))
             {
                 try
                 {
@@ -106,6 +104,7 @@ namespace PowerBIServiceBackup
             }
 
         }
+
         [FunctionName("UploadBlob")]
         public static string UploadBlob([ActivityTrigger] GroupReport groupReport, ILogger log)
         {
@@ -114,7 +113,7 @@ namespace PowerBIServiceBackup
             try
             {
                 // Create a Power BI Client object. It will be used to call Power BI APIs.
-                using (PowerBIClient powerBIClient = new PowerBIClient(new Uri(ConfigurationManager.AppSettings["PowerBIApi"]), TokenCredentials))
+                using (PowerBIClient powerBIClient = new PowerBIClient(PowerBIApiUrl, TokenCredentials))
                 {
                     log.LogInformation($"powerBI client created");
                     Report report = powerBIClient.Reports.GetReport(groupReport.GroupId, groupReport.ReportId);
@@ -124,9 +123,10 @@ namespace PowerBIServiceBackup
 
                 // Retrieve destination blob reference
 
-                CloudBlockBlob pbixBlob = GetBlob(ConfigurationManager.AppSettings["BlobConnectionString"]
-                    , ConfigurationManager.AppSettings["BlobContainerName"]
-                    , reportName);
+                CloudBlockBlob pbixBlob = GetBlob(
+                    BlobStorageCS
+                    ,BlobStorageContainerName
+                    ,reportName);
                 log.LogInformation($"Blob reference retrieved");
 
                 pbixBlob.UploadFromStream(reportStream);
@@ -158,47 +158,8 @@ namespace PowerBIServiceBackup
             return blockBlob;
 
         }
-        //Retrieve the ADAL Token  https://docs.microsoft.com/fr-fr/power-bi/developer/get-azuread-access-token#access-token-for-non-power-bi-users-app-owns-data
-        public static TokenCredentials GetToken(string PowerBILogin,string PowerBIPassword, string AuthenticationContextUrl, string PowerBIRessourceUrl, string ClientId)
-        {
-            UserCredential credential = new UserPasswordCredential(PowerBILogin, PowerBIPassword);
 
-            // Authenticate using created credentials
-            AuthenticationContext authenticationContext = new AuthenticationContext(AuthenticationContextUrl);
-
-            Task<AuthenticationResult> authenticationResultTask = authenticationContext.AcquireTokenAsync(PowerBIRessourceUrl, ClientId, credential);
-
-            AuthenticationResult authenticationResult = authenticationResultTask.Result;
-            if (authenticationResult == null)
-            {
-                throw new Exception("Authentication Failed.");
-            }
-            else
-            {
-                return new TokenCredentials(authenticationResult.AccessToken, "Bearer");
-            }
-                
-        }
-
-        public class GroupReport
-        {
-            private string groupId;
-            private string reportId;
-
-            public GroupReport(string groupId, string reportId)
-            {
-                this.GroupId = groupId;
-                this.ReportId = reportId;
-            }
-
-            public string GroupId { get => groupId; set => groupId = value; }
-            public string ReportId { get => reportId; set => reportId = value; }
-
-            public override string ToString()
-            {
-                return base.ToString();
-            }
-        }
+        
 
     }
 }
