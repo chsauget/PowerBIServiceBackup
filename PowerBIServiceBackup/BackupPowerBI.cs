@@ -6,11 +6,9 @@ using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.Azure.WebJobs;
 using Microsoft.Extensions.Logging;
-using Microsoft.IdentityModel.Clients.ActiveDirectory;
 using Microsoft.PowerBI.Api.V2;
 using Microsoft.PowerBI.Api.V2.Models;
 using Microsoft.Rest;
-using Microsoft.WindowsAzure.Storage;
 using Microsoft.WindowsAzure.Storage.Blob;
 using PowerBIServiceBackup.Helpers;
 using PowerBIServiceBackup.Models;
@@ -66,14 +64,12 @@ namespace PowerBIServiceBackup
             List<GroupReport> powerBIReports = groupsTasks.SelectMany(t => t.Result).ToList();
 
             // Treat all reports in //
-            List<Task<string>> reportsTasks = new List<Task<string>>();
-            foreach (GroupReport groupReport in powerBIReports)
+            Parallel.ForEach(powerBIReports, new ParallelOptions { MaxDegreeOfParallelism = int.Parse(ConfigurationManager.AppSettings["MaxDegreeOfParallelism"]) },
+            groupReport =>
             {
-                    Task<string> task = context.CallActivityAsync<string>("UploadBlob", groupReport);
-                    reportsTasks.Add(task);
-            }
+                context.CallActivityAsync<string>("UploadBlob", groupReport);
+            });
 
-            await Task.WhenAll(reportsTasks);
             log.LogInformation($"************* Backup end ***************");
         }
 
