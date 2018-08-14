@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Configuration;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
@@ -12,11 +11,18 @@ using Microsoft.Rest;
 using Microsoft.WindowsAzure.Storage.Blob;
 using PowerBIServiceBackup.Helpers;
 using PowerBIServiceBackup.Models;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace PowerBIServiceBackup
 {
-    public static class BackupPowerBI
-    {
+	using Infrastructure;
+	using Infrastructure.Config;
+
+	public static class BackupPowerBI
+	{
+		private static readonly AppSettings Settings =
+			ServiceProviderConfiguration.GetServiceProvider().GetService<AppSettings>();
+
         private static TokenCredentials _tokenCredentials;
         public static TokenCredentials TokenCredentials
         {
@@ -26,11 +32,11 @@ namespace PowerBIServiceBackup
                 {
                     //Retrieve the access credential
                     TokenCredentials tokenCredentials = ADALHelper.GetToken(
-                            ConfigurationManager.AppSettings["PowerBILogin"]
-                           ,ConfigurationManager.AppSettings["PowerBIPassword"]
-                           ,ConfigurationManager.AppSettings["AuthenticationContextUrl"]
-                           ,ConfigurationManager.AppSettings["PowerBIRessourceUrl"]
-                           ,ConfigurationManager.AppSettings["ClientId"]);
+						Settings.AzureAd.PowerBILogin,
+						Settings.AzureAd.PowerBIPassword,
+						Settings.AzureAd.AuthenticationContextUrl,
+						Settings.AzureAd.PowerBIRessourceUrl,
+						Settings.AzureAd.ClientId);
 
                     _tokenCredentials = tokenCredentials;
                 }
@@ -39,9 +45,9 @@ namespace PowerBIServiceBackup
             }
         }
 
-        public static Uri PowerBIApiUrl = new Uri(ConfigurationManager.AppSettings["PowerBIApi"]);
-        public static string BlobStorageCS = ConfigurationManager.AppSettings["BlobConnectionString"];
-        public static string BlobStorageContainerName = ConfigurationManager.AppSettings["BlobContainerName"];
+        public static Uri PowerBIApiUrl = new Uri(Settings.PowerBIApi);
+        public static string BlobStorageCS = Settings.BlobStorage.BlobConnectionString;
+        public static string BlobStorageContainerName = Settings.BlobStorage.BlobContainerName;
 
         [FunctionName("RetrievePowerBIReports")]
         public static async Task Run(
@@ -64,7 +70,7 @@ namespace PowerBIServiceBackup
             List<GroupReport> powerBIReports = groupsTasks.SelectMany(t => t.Result).ToList();
 
             // Treat all reports in //
-            Parallel.ForEach(powerBIReports, new ParallelOptions { MaxDegreeOfParallelism = int.Parse(ConfigurationManager.AppSettings["MaxDegreeOfParallelism"]) },
+            Parallel.ForEach(powerBIReports, new ParallelOptions { MaxDegreeOfParallelism = Settings.MaxDegreeOfParallelism.Value},
             groupReport =>
             {
                 context.CallActivityAsync<string>("UploadBlob", groupReport);
