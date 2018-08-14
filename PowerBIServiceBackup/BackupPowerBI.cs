@@ -50,11 +50,11 @@ namespace PowerBIServiceBackup
             log.LogInformation($"Starting RetrievePowerBIReports");
             
             //Get power bi groups id
-            string[] powerBIGroups = await context.CallActivityAsync<string[]>("GetGroups",null);
+            Dictionary<string,string> powerBIGroups = await context.CallActivityAsync<Dictionary<string, string>>("GetGroups",null);
 
             //Get all reports of all groups
             List<Task<List<GroupReport>>> groupsTasks = new List<Task<List<GroupReport>>>();
-            foreach (string group in powerBIGroups)
+            foreach (KeyValuePair<string,string> group in powerBIGroups)
             {
                 Task<List<GroupReport>> task = context.CallActivityAsync<List<GroupReport>>("GetReports", group);
                 groupsTasks.Add(task);
@@ -69,33 +69,31 @@ namespace PowerBIServiceBackup
             {
                 context.CallActivityAsync<string>("UploadBlob", groupReport);
             });
-
-            log.LogInformation($"************* Backup end ***************");
         }
 
         [FunctionName("GetGroups")]
-        public static string[] GetGroups([ActivityTrigger]DurableActivityContext GroupContext, ILogger log)
+        public static Dictionary<string,string> GetGroups([ActivityTrigger]DurableActivityContext GroupContext, ILogger log)
         {
             log.LogInformation($"Retrieving PowerBI Groups");
             
             using (PowerBIClient powerBIClient = new PowerBIClient(PowerBIApiUrl, TokenCredentials))
             {
-                return powerBIClient.Groups.GetGroups().Value.Select(x => x.Id).ToArray();
+                return powerBIClient.Groups.GetGroups().Value.Select(x => new { x.Id, x.Name }).ToDictionary(t => t.Id,t => t.Name);
             }
         }
 
         [FunctionName("GetReports")]
-        public static List<GroupReport> GetReports([ActivityTrigger]string group, ILogger log)
+        public static List<GroupReport> GetReports([ActivityTrigger]KeyValuePair<string,string> group, ILogger log)
         {
             using (PowerBIClient powerBIClient = new PowerBIClient(PowerBIApiUrl, TokenCredentials))
             {
                 try
                 {
-                    return powerBIClient.Reports.GetReports(group).Value.Select(x => new GroupReport(group, x.Id)).ToList();
+                    return powerBIClient.Reports.GetReports(group.Key).Value.Select(x => new GroupReport(group.Key, x.Id, group.Value)).ToList();
                 }
                 catch (Exception e)
                 {
-                    log.LogInformation($"Error : " + e.Message);
+                    log.LogError($"Error : " + e.Message);
                     return new List<GroupReport>();
                 }   
             }
@@ -115,7 +113,7 @@ namespace PowerBIServiceBackup
                 {
                     log.LogInformation($"powerBI client created");
                     Report report = await powerBIClient.Reports.GetReportAsync(groupReport.GroupId, groupReport.ReportId);
-                    reportName = DateTime.Now.ToString("yyyyMMdd_HH") + "h/" + report.Name + ".pbix";
+                    reportName = DateTime.Now.ToString("yyyyMMdd_HH") + "h/" + groupReport.GroupName + "/" + report.Name + ".pbix";
                     reportStream = await powerBIClient.Reports.ExportReportAsync(groupReport.GroupId, groupReport.ReportId);
                 }
 
