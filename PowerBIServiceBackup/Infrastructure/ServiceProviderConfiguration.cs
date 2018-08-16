@@ -31,9 +31,9 @@
 		{
 			var config = new ConfigurationBuilder()
 						 .SetBasePath(Directory.GetCurrentDirectory())
-						 // you might want to change this, to your real config file.
-						 .AddJsonFile("sample_local.settings", true, true)
-						 .AddEnvironmentVariables()
+                         // you might want to change this, to your real config file.
+                         .AddJsonFile("local.settings.json", true, true)
+                         .AddEnvironmentVariables()
 						 .Build();
 
 			return config;
